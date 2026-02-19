@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+*.pyo
+funny_sounds_output/
