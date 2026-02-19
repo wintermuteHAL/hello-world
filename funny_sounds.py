@@ -4,9 +4,11 @@ Funny Sounds Player
 -------------------
 Featuring Arnold Schwarzenegger, The Crypt Keeper, and Randy 'Macho Man' Savage.
 
-Uses espeak for text-to-speech synthesis with character-specific voice settings.
-Audio is saved as WAV files that can be played with any media player.
-On systems with audio hardware, playback is attempted automatically via aplay/paplay.
+Windows : uses pyttsx3 (Windows built-in SAPI engine) — pip install pyttsx3
+Linux   : uses espeak — apt-get install espeak
+Mac     : uses espeak — brew install espeak
+
+Run normally for live playback, or pass --save to export WAV files.
 """
 
 import subprocess
@@ -15,6 +17,8 @@ import os
 import random
 import tempfile
 import shutil
+
+IS_WINDOWS = sys.platform == "win32"
 
 # ─────────────────────────────────────────────
 #  CHARACTER DEFINITIONS
@@ -56,6 +60,8 @@ CHARACTERS = {
         ],
         # Slower rate, very low pitch → gravelly Austrian-ish robot voice
         "espeak_args": ["-v", "en-us", "-s", "105", "-p", "10", "-a", "200"],
+        # pyttsx3 (Windows): slow and deliberate
+        "pyttsx3_settings": {"rate": 120, "volume": 1.0},
     },
 
     "2": {
@@ -93,6 +99,8 @@ CHARACTERS = {
         ],
         # Higher pitch, faster rate → wheezy creepy cackle
         "espeak_args": ["-v", "en-us", "-s", "155", "-p", "75", "-a", "180"],
+        # pyttsx3 (Windows): fast and high energy
+        "pyttsx3_settings": {"rate": 200, "volume": 0.9},
     },
 
     "3": {
@@ -129,6 +137,8 @@ CHARACTERS = {
         ],
         # Fast rate, mid-low pitch, high amplitude → loud intense delivery
         "espeak_args": ["-v", "en-us", "-s", "148", "-p", "35", "-a", "250"],
+        # pyttsx3 (Windows): fast and loud
+        "pyttsx3_settings": {"rate": 185, "volume": 1.0},
     },
 }
 
@@ -137,29 +147,46 @@ CHARACTERS = {
 # ─────────────────────────────────────────────
 
 def _find_player():
-    """Return the first available audio player command, or None."""
+    """Return the first available audio player command on Linux/Mac, or None."""
     for player in ("aplay", "paplay", "ffplay", "sox"):
         if shutil.which(player):
             return player
     return None
 
 
-def speak(text, espeak_args, output_dir=None):
-    """
-    Synthesise speech via espeak.
+def _speak_windows(text, pyttsx3_settings, output_dir=None):
+    """Speak using the Windows built-in SAPI engine via pyttsx3."""
+    try:
+        import pyttsx3
+    except ImportError:
+        print("  [pyttsx3 not found — run: pip install pyttsx3]")
+        return None
 
-    If output_dir is given, save the WAV there and return the path.
-    Otherwise attempt live playback and return None.
-    """
+    engine = pyttsx3.init()
+    engine.setProperty("rate", pyttsx3_settings["rate"])
+    engine.setProperty("volume", pyttsx3_settings["volume"])
+
     if output_dir:
-        # Sanitise filename
+        safe = "".join(c if c.isalnum() or c in " _-" else "" for c in text[:40])
+        wav_path = os.path.join(output_dir, f"{safe.strip()}.wav")
+        engine.save_to_file(text, wav_path)
+        engine.runAndWait()
+        return wav_path
+
+    engine.say(text)
+    engine.runAndWait()
+    return None
+
+
+def _speak_espeak(text, espeak_args, output_dir=None):
+    """Speak using espeak (Linux / Mac)."""
+    if output_dir:
         safe = "".join(c if c.isalnum() or c in " _-" else "" for c in text[:40])
         wav_path = os.path.join(output_dir, f"{safe.strip()}.wav")
         cmd = ["espeak"] + espeak_args + [text, "-w", wav_path]
         subprocess.run(cmd, check=True, stderr=subprocess.DEVNULL)
         return wav_path
 
-    # Try live playback: generate to a temp WAV then play it
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
         tmp = f.name
     try:
@@ -185,6 +212,13 @@ def speak(text, espeak_args, output_dir=None):
         except OSError:
             pass
     return None
+
+
+def speak(text, char, output_dir=None):
+    """Speak text using the appropriate engine for the current platform."""
+    if IS_WINDOWS:
+        return _speak_windows(text, char["pyttsx3_settings"], output_dir)
+    return _speak_espeak(text, char["espeak_args"], output_dir)
 
 
 # ─────────────────────────────────────────────
@@ -247,7 +281,7 @@ def character_loop(key, output_dir):
                 continue
 
         print(f'\n  >> "{phrase}"\n')
-        wav = speak(phrase, char["espeak_args"], output_dir)
+        wav = speak(phrase, char, output_dir)
         if wav:
             print(f"  Saved: {wav}\n")
 
@@ -261,7 +295,7 @@ def play_random(output_dir):
     char = CHARACTERS[key]
     phrase = random.choice(char["phrases"])
     print(f"\n  [{char['name']}]\n  >> \"{phrase}\"\n")
-    wav = speak(phrase, char["espeak_args"], output_dir)
+    wav = speak(phrase, char, output_dir)
     if wav:
         print(f"  Saved: {wav}\n")
 
@@ -282,18 +316,14 @@ def main():
 
         if choice == "q":
             print('\n  "Hasta la vista, baby."\n')
-            speak(
-                "Hasta la vista, baby.",
-                CHARACTERS["1"]["espeak_args"],
-                output_dir,
-            )
+            speak("Hasta la vista, baby.", CHARACTERS["1"], output_dir)
             print("  Goodbye!\n")
             break
 
         if choice in CHARACTERS:
             char = CHARACTERS[choice]
             print(f'\n  >> Introducing... {char["name"]}!\n')
-            speak(char["intro"], char["espeak_args"], output_dir)
+            speak(char["intro"], char, output_dir)
             character_loop(choice, output_dir)
 
         elif choice == "4":

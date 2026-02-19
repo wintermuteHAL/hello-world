@@ -16,9 +16,11 @@ An interactive CLI program that speaks famous catchphrases from three iconic cha
 
 ### Requirements
 
-```bash
-apt-get install espeak   # TTS engine
-```
+| Platform | Command |
+|----------|---------|
+| **Windows 11** | `pip install pyttsx3` (uses built-in Windows voices — no extra install) |
+| **Linux** | `apt-get install espeak` |
+| **Mac** | `brew install espeak` |
 
 ### Usage
 
